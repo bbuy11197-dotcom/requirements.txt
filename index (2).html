@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Отзывы</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+:root{--bg:#0f1117;--card:#141720;--t:#fff;--m:#8a8f9c;--ok:#22a85a;--bad:#d64545;--b:#2a6cb8;--star:#c9971c}
+*{box-sizing:border-box;margin:0;-webkit-tap-highlight-color:transparent}
+body{background:var(--bg);color:var(--t);font:16px system-ui,sans-serif;padding:16px 16px 100px}
+h1{font-size:34px;display:flex;gap:12px;align-items:center;margin:8px 0 14px}
+.sum{display:flex;gap:14px;align-items:center;margin-bottom:16px}
+.big{font-size:54px;font-weight:700}.st{color:var(--star);letter-spacing:2px}.m{color:var(--m)}
+.tabs{display:flex;gap:8px;margin-bottom:16px;overflow:auto}
+.tab{padding:12px 18px;border-radius:24px;background:#181b24;color:var(--m);border:0;font-size:16px;white-space:nowrap}
+.tab.on{background:var(--b);color:#fff}
+.rv{background:var(--card);border:2px solid var(--ok);border-radius:20px;padding:14px;margin-bottom:14px;box-shadow:0 0 12px #22a85a33}
+.rv.neg{border-color:var(--bad);box-shadow:0 0 12px #d6454533}
+.top{display:flex;gap:12px;align-items:center}
+.av{width:48px;height:48px;border-radius:50%;background:var(--b);display:grid;place-items:center;font-weight:700;flex:none}
+.nm{font-weight:700}.pr{color:var(--m);font-size:13px;text-transform:uppercase;font-weight:600}
+.top .st{margin-left:auto}.tx{margin:10px 0;word-break:break-word}.dt{text-align:right;color:var(--m);font-size:14px}
+.btn{position:fixed;left:16px;right:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));background:var(--b);color:#fff;border:0;border-radius:18px;padding:16px;font-size:18px;font-weight:700}
+.btn:disabled{opacity:.5}
+#form{display:none}.pick{font-size:40px;display:flex;gap:6px;justify-content:center;margin:18px 0}
+.pick span{color:#3a3f4c;cursor:pointer}.pick span.on{color:var(--star)}
+textarea{width:100%;min-height:140px;background:var(--card);color:#fff;border:2px solid #2a2f3c;border-radius:16px;padding:14px;font:inherit;resize:none}
+.lbl{text-align:center;color:var(--m);min-height:22px}.empty{text-align:center;color:var(--m);padding:40px 0}
+.back{background:none;border:0;color:var(--b);font-size:16px;margin-bottom:10px}
+</style></head><body>
+<!-- ===== НАСТРОЙКИ ===== -->
+<script>
+const CONFIG={
+  TITLE:"Отзывы",
+  API_URL:"",   // https://твой-сервер/api  (пусто = демо-режим, отзывы хранятся только на устройстве)
+};
+</script>
+<div id="list">
+  <h1><span>🎁</span><span>${'Отзывы'}</span></h1>
+  <div class="sum"><div class="big" id="avg">5.0</div><div><div class="st" id="avgst">★★★★★</div><div class="m" id="cnt">0 отзывов</div></div></div>
+  <div class="tabs"><button class="tab on" data-f="all">Все отзывы</button><button class="tab" data-f="pos">Позитивные</button><button class="tab" data-f="neg">Негативные</button></div>
+  <div id="items"></div>
+  <button class="btn" id="open">Оставить отзыв</button>
+</div>
+<div id="form">
+  <button class="back" id="back">← Назад</button>
+  <h1 style="font-size:26px">Ваш отзыв</h1>
+  <div class="pr" id="prod"></div>
+  <div class="m" style="margin-top:10px">Ваша оценка</div>
+  <div class="pick" id="pick"></div><div class="lbl" id="lbl"></div>
+  <p class="m" style="margin:14px 0 8px">Расскажите, что понравилось</p>
+  <textarea id="text" maxlength="500" placeholder="Быстро, всё пришло сразу..."></textarea>
+  <button class="btn" id="send">Отправить отзыв</button>
+</div>
+<script>
+const tg=window.Telegram?.WebApp;tg?.ready();tg?.expand();
+document.querySelector('h1 span:last-child').textContent=CONFIG.TITLE;
+const P=new URLSearchParams(location.search);
+const API=P.get('api')||CONFIG.API_URL, ORDER=P.get('order')||'', PROD=P.get('product')||'';
+const initData=tg?.initData||'', user=tg?.initDataUnsafe?.user;
+const $=s=>document.querySelector(s), esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const mask=u=>{u=(u||'user').replace('@','');const n=u.length;if(n<=3)return'@'+u[0]+'**';
+  const a=Math.floor(n*.375)||1,b=n>=6?2:1;return'@'+u.slice(0,a)+'*'.repeat(n-a-b)+u.slice(n-b)};
+const LBL=['','Ужасно','Плохо','Нормально','Хорошо','Отлично'];
+let reviews=[],filter='all',rating=0;
+const LS='reviews_demo';
+async function load(){
+  try{
+    if(API){const r=await fetch(API.replace(/\/$/,'')+'/reviews');reviews=await r.json()}
+    else reviews=JSON.parse(localStorage.getItem(LS)||'[]');
+  }catch(e){reviews=[]}
+  render();
+}
+function render(){
+  const n=reviews.length,avg=n?reviews.reduce((s,r)=>s+r.rating,0)/n:5;
+  $('#avg').textContent=avg.toFixed(1);$('#avgst').textContent='★'.repeat(Math.round(avg))+'☆'.repeat(5-Math.round(avg));
+  const w=n%10==1&&n%100!=11?'отзыв':[2,3,4].includes(n%10)&&![12,13,14].includes(n%100)?'отзыва':'отзывов';
+  $('#cnt').textContent=n+' '+w;
+  const f=reviews.filter(r=>filter=='all'||(filter=='pos'?r.rating>=4:r.rating<=3));
+  $('#items').innerHTML=f.length?f.map(r=>`<div class="rv ${r.rating<=3?'neg':''}"><div class="top"><div class="av">${esc((r.name.replace('@','')[0]||'?').toUpperCase())}</div><div><div class="nm">${esc(r.name)}</div><div class="pr">${esc(r.product||'')}</div></div><div class="st">${'★'.repeat(r.rating)}</div></div>${r.text?`<div class="tx">${esc(r.text)}</div>`:''}<div class="dt">${new Date(r.date).toLocaleDateString('ru-RU',{day:'numeric',month:'long',year:'numeric'})}</div></div>`).join(''):'<div class="empty">Пока нет отзывов</div>';
+}
+document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.remove('on'));b.classList.add('on');filter=b.dataset.f;render()});
+$('#pick').innerHTML=[1,2,3,4,5].map(i=>`<span data-i="${i}">★</span>`).join('');
+$('#pick').onclick=e=>{const i=+e.target.dataset.i;if(!i)return;rating=i;
+  document.querySelectorAll('#pick span').forEach(s=>s.classList.toggle('on',+s.dataset.i<=i));$('#lbl').textContent=i+' из 5 — '+LBL[i];tg?.HapticFeedback?.selectionChanged()};
+$('#open').onclick=()=>{
+  if(!ORDER&&API){return tg?.showAlert?tg.showAlert('Оставить отзыв можно после заказа'):alert('Оставить отзыв можно после заказа')}
+  $('#prod').textContent=PROD?'Вы приобрели: '+PROD:'';$('#list').style.display='none';$('#form').style.display='block'};
+$('#back').onclick=()=>{$('#form').style.display='none';$('#list').style.display='block'};
+$('#send').onclick=async()=>{
+  const say=m=>tg?.showAlert?tg.showAlert(m):alert(m);
+  if(!rating)return say('Поставьте оценку звёздами');
+  const text=$('#text').value.trim();$('#send').disabled=true;
+  try{
+    if(API){
+      const r=await fetch(API.replace(/\/$/,'')+'/reviews',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({initData,order_id:ORDER,product:PROD,rating,text})});
+      const j=await r.json();if(!r.ok)throw new Error(j.error||'Ошибка');
+    }else{
+      reviews.unshift({name:mask(user?.username||'demo_user'),product:PROD,rating,text,date:new Date().toISOString()});
+      localStorage.setItem(LS,JSON.stringify(reviews));
+    }
+    tg?.HapticFeedback?.notificationOccurred('success');$('#text').value='';rating=0;$('#lbl').textContent='';
+    document.querySelectorAll('#pick span').forEach(s=>s.classList.remove('on'));
+    $('#back').click();await load();say('Спасибо за отзыв! ⭐');
+  }catch(e){say(e.message==='Failed to fetch'?'Нет связи с сервером':e.message)}
+  $('#send').disabled=false;
+};
+load();
+</script></body></html>
